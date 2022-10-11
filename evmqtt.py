@@ -4,6 +4,7 @@ Linux input event to MQTT gateway
 https://github.com/odtgit/evmqtt
 """
 
+
 import os
 import signal
 import threading
@@ -15,7 +16,7 @@ from platform import node as hostname
 from pathlib import Path
 import evdev
 import paho.mqtt.client as mqtt
-
+from ha_mqtt_device import *
 
 def log(s):
     sys.stderr.write("[%s] %s\n" % (datetime.datetime.now(), s))
@@ -84,7 +85,7 @@ class MQTTClient(threading.Thread):
         self.mqttclient.on_message = on_message
         self.mqttclient.connect(serverip, port)
         self.mqttclient.loop_start()
-
+        
 
 key_state = {}
 
@@ -146,17 +147,42 @@ class InputMonitor(threading.Thread):
         super(InputMonitor, self).__init__()
         self.mqttclient = mqttclient
         self.device = evdev.InputDevice(device)
-        self.topic = topic + '/state'  # state topic
-        self.config = topic + '/config'  # config topic for HA autodiscovery
-        config = {
-                "name": MQTTCFG["name"],
-                "state_topic": self.topic,
-                "icon": "mdi:code-json"
-                }
-        msg_config = json.dumps(config)
-        self.mqttclient.publish(self.config, msg_config)
-        log("Sending configuration for autodiscovery to %s" % (self.config))
-        log("Monitoring %s and sending to topic %s" % (device, self.topic))
+
+        self.ha_device = Device("BU836X_ID","BU836X_1","1.0","","Leo Bodnar")
+
+        caps = self.device.capabilities(verbose=False, absinfo=False)
+        
+        caps_keys = caps[evdev.ecodes.EV_KEY]
+        caps_abs = caps[evdev.ecodes.EV_ABS]
+
+
+        #print(caps_keys)
+        #print(caps_abs)
+        
+        self.ha_buttons= {}
+        for index, key in enumerate(caps_keys):
+             bin = Binary( mqttclient, "Button%s" % (index+1) , "mdi:button-pointer")
+             self.ha_buttons[key] =  bin
+             #bin._send_config()
+             log("Monitoring %s and sending to topic %s" % (device, bin.topic))
+
+        #IM = [InputMonitor(MQ.mqttclient, device, topic) for device in devices]
+        #for item in self.ha_buttons.items():
+        #    print(" %s -> %s" % (item[0], item[1].name))
+
+        #self.topic = topic + '/state'  # state topic
+        #self.config = topic + '/config'  # config topic for HA autodiscovery
+        #config = {
+        #        "name": MQTTCFG["name"],
+        #        "state_topic": self.topic,
+        #        "icon": "mdi:code-json"
+        #        }
+        #msg_config = json.dumps(config)
+        #self.mqttclient.publish(self.config, msg_config)
+        #log("Sending configuration for autodiscovery to %s" % (self.config))
+        #log("Monitoring %s and sending to topic %s" % (device, self.topic))
+
+        
 
     def run(self):
         global key_state
