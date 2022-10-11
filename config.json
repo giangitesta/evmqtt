@@ -1,9 +1,9 @@
 {
-  "serverip":"127.0.0.1",
+  "serverip":"192.168.1.16",
   "port":1883,
   "username":"user",
   "password":"pwd",
   "name":"Event Gateway (MQTT)",
   "topic":"homeassistant/sensor/evmqtt",
-  "devices": ["/dev/input/event0", "/dev/input/event1"]
+  "devices": ["/dev/input/event7"]
 }
