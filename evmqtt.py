@@ -193,6 +193,7 @@ if __name__ == "__main__":
     try:
         Watcher()
 
+
         config_filename = "config.local.json"
         config_file = Path(config_filename)
         if not config_file.is_file():
