@@ -148,39 +148,20 @@ class InputMonitor(threading.Thread):
         self.mqttclient = mqttclient
         self.device = evdev.InputDevice(device)
 
-        self.ha_device = Device("BU836X_ID","BU836X_1","1.0","","Leo Bodnar")
-
-        caps = self.device.capabilities(verbose=False, absinfo=False)
-        
-        caps_keys = caps[evdev.ecodes.EV_KEY]
-        caps_abs = caps[evdev.ecodes.EV_ABS]
 
 
-        #print(caps_keys)
-        #print(caps_abs)
-        
-        self.ha_buttons= {}
-        for index, key in enumerate(caps_keys):
-             bin = Binary( mqttclient, "Button%s" % (index+1) , "mdi:button-pointer")
-             self.ha_buttons[key] =  bin
-             #bin._send_config()
-             log("Monitoring %s and sending to topic %s" % (device, bin.topic))
 
-        #IM = [InputMonitor(MQ.mqttclient, device, topic) for device in devices]
-        #for item in self.ha_buttons.items():
-        #    print(" %s -> %s" % (item[0], item[1].name))
-
-        #self.topic = topic + '/state'  # state topic
-        #self.config = topic + '/config'  # config topic for HA autodiscovery
-        #config = {
-        #        "name": MQTTCFG["name"],
-        #        "state_topic": self.topic,
-        #        "icon": "mdi:code-json"
-        #        }
-        #msg_config = json.dumps(config)
-        #self.mqttclient.publish(self.config, msg_config)
-        #log("Sending configuration for autodiscovery to %s" % (self.config))
-        #log("Monitoring %s and sending to topic %s" % (device, self.topic))
+        self.topic = topic + '/state'  # state topic
+        self.config = topic + '/config'  # config topic for HA autodiscovery
+        config = {
+                "name": MQTTCFG["name"],
+                "state_topic": self.topic,
+                "icon": "mdi:code-json"
+                }
+        msg_config = json.dumps(config)
+        self.mqttclient.publish(self.config, msg_config)
+        log("Sending configuration for autodiscovery to %s" % (self.config))
+        log("Monitoring %s and sending to topic %s" % (device, self.topic))
 
         
 
@@ -193,21 +174,19 @@ class InputMonitor(threading.Thread):
 
         for event in self.device.read_loop():
             if event.type == evdev.ecodes.EV_KEY:
-                k = evdev.categorize(event)
-                set_modifier(k.keycode, k.keystate)
-                if not is_modifier(k.keycode) and not is_ignore(k.keycode):
-                    if k.keystate == 1:
-                        msg = {
-                            "key": concat_multikeys(k.keycode) +
-                            get_modifiers(),
-                            "devicePath": self.device.path
-                        }
-                        msg_json = json.dumps(msg)
-                        self.mqttclient.publish(self.topic, msg_json)
-                        # log what we publish
-                        log("Device '%s', published message %s" %
-                            (self.device.path, msg_json))
+                c_key = "BTN_" + str(event.code)
+                c_value = event.value
+                msg = {
+                      "key": c_key,
+                      "value": c_value,
+                      "devicePath": self.device.path
+                      }  
 
+                msg_json = json.dumps(msg)
+                self.mqttclient.publish(self.topic, msg_json)
+                # log what we publish
+                log("Device '%s', published message %s" %
+                              (self.device.path, msg_json))
 
 if __name__ == "__main__":
 
