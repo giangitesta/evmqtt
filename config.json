@@ -4,6 +4,6 @@
   "username":"user",
   "password":"pwd",
   "name":"Event Gateway (MQTT)",
-  "topic":"homeassistant/sensor/evmqtt",
+  "topic":"obs/evmqtt/",
   "devices": ["/dev/input/event7"]
 }

@@ -148,19 +148,17 @@ class InputMonitor(threading.Thread):
         self.mqttclient = mqttclient
         self.device = evdev.InputDevice(device)
 
-
-
-
-        self.topic = topic + '/state'  # state topic
-        self.config = topic + '/config'  # config topic for HA autodiscovery
-        config = {
-                "name": MQTTCFG["name"],
-                "state_topic": self.topic,
-                "icon": "mdi:code-json"
-                }
-        msg_config = json.dumps(config)
-        self.mqttclient.publish(self.config, msg_config)
-        log("Sending configuration for autodiscovery to %s" % (self.config))
+        #self.topic = topic + '/state'  # state topic
+        self.topic = topic + self.device.name + '/state'
+        #self.config = topic + '/config'  # config topic for HA autodiscovery
+        #config = {
+        #        "name": MQTTCFG["name"],
+        #        "state_topic": self.topic,
+        #        "icon": "mdi:code-json"
+        #        }
+        #msg_config = json.dumps(config)
+        #self.mqttclient.publish(self.topic, msg_config)
+        #log("Sending configuration for autodiscovery to %s" % (self.config))
         log("Monitoring %s and sending to topic %s" % (device, self.topic))
 
         
@@ -174,11 +172,17 @@ class InputMonitor(threading.Thread):
 
         for event in self.device.read_loop():
             if event.type == evdev.ecodes.EV_KEY:
-                c_key = "BTN_" + str(event.code)
-                c_value = event.value
+                
+                key_code = "KEY_" + str(event.code)
+                
+                if event.value == 0: key_value = 'up'
+                elif event.value == 1: key_value = 'down'
+                elif event.value == 2: key_value = 'hold'
+                else : key_value = 'unknow'
+ 
                 msg = {
-                      "key": c_key,
-                      "value": c_value,
+                      "key_code": key_code,
+                      "key_value": key_value,
                       "devicePath": self.device.path
                       }  
 
