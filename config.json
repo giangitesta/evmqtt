@@ -5,5 +5,6 @@
   "password":"pwd",
   "name":"Event Gateway (MQTT)",
   "topic":"obs/evmqtt/",
-  "devices": ["/dev/input/event7"]
+  "devices": ["/dev/input/event7"],
+  "teleperiod": 60
 }

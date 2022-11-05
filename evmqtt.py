@@ -17,7 +17,7 @@ from platform import node as hostname
 from pathlib import Path
 import evdev
 import paho.mqtt.client as mqtt
-from ha_mqtt_device import *
+
 
 def log(s):
     sys.stderr.write("[%s] %s\n" % (datetime.datetime.now(), s))
@@ -96,11 +96,12 @@ class MQTTClient(threading.Thread):
 
 class InputMonitor(threading.Thread):
 
-    def __init__(self, mqttclient, device, topic):
+    def __init__(self, mqttclient, device, topic, tele_period):
         super(InputMonitor, self).__init__()
         self.mqttclient = mqttclient
         self.device = evdev.InputDevice(device)
         self.topic = topic + self.device.name.replace(" ","_") + "/"
+        self.tele_period = tele_period
 
         # Inizializza lo stato dei tasti
         ak = self.device.active_keys()
@@ -140,7 +141,7 @@ class InputMonitor(threading.Thread):
                                 (self.device.path, key_code + "=" +  key_value))
             else:
                 t_delta = datetime.datetime.now() - t_start
-                if t_delta.total_seconds() >= 60.0:
+                if t_delta.total_seconds() >= self.tele_period:
                     t_start = datetime.datetime.now() 
 
                     ak = self.device.active_keys()
@@ -197,14 +198,14 @@ if __name__ == "__main__":
 
         topic = MQTTCFG["topic"]
         devices = MQTTCFG["devices"]
-
+        tele_period = MQTTCFG["teleperiod"]
         available_devices = [evdev.InputDevice(
             path) for path in evdev.list_devices()]
         log("Found %s available devices:" % len(available_devices))
         for device in available_devices:
             log("Path:'%s', Name: '%s'" % (device.path, device.name))
 
-        IM = [InputMonitor(MQ.mqttclient, device, topic) for device in devices]
+        IM = [InputMonitor(MQ.mqttclient, device, topic, tele_period) for device in devices]
 
         for monitor in IM:
             monitor.start()
