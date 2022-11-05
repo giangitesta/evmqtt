@@ -11,6 +11,7 @@ import threading
 import sys
 import datetime
 import json
+from time import sleep
 from time import time
 from platform import node as hostname
 from pathlib import Path
@@ -57,10 +58,13 @@ def on_connect(client, userdata, flags, rc):
     # reconnect then subscriptions will be renewed.
     client.subscribe("topic")
 
+    log("LWT Message " + userdata["topic"])
+    client.publish(userdata["topic"] + "LWT", "Online", retain=True)
+
 
 def on_disconnect(client, userdata, rc):
+    client.publish(userdata["topic"] + "LWT", "Offline", retain=True)
     log("Disconnected with result code " + str(rc))
-
 # The callback for when a PUBLISH message is received from the server.
 
 
@@ -83,62 +87,11 @@ class MQTTClient(threading.Thread):
         self.mqttclient.on_connect = on_connect
         self.mqttclient.on_disconnect = on_disconnect
         self.mqttclient.on_message = on_message
+        self.mqttclient.user_data_set(mqttcfg)
+        self.mqttclient.will_set(mqttcfg["topic"] + "LWT", "Offline", retain=True)
         self.mqttclient.connect(serverip, port)
         self.mqttclient.loop_start()
         
-
-key_state = {}
-
-
-def get_modifiers():
-    global key_state
-    ret = []
-    for x in key_state.keys():
-        if key_state[x] == 1:
-            ret.append(x)
-    ret.sort()
-    if len(ret) == 0:
-        return ""
-    return "_" + "_".join(ret)
-
-
-# the number keys on the remote always set and unset numlock - this is
-# superfluous for my use-case
-modifiers = [
-    "KEY_LEFTSHIFT",
-    "KEY_RIGHTSHIFT",
-    "KEY_LEFTCTRL",
-    "KEY_RIGHTCTRL"]
-ignore = ["KEY_NUMLOCK"]
-
-
-def set_modifier(keycode, keystate):
-    global key_state, modifiers
-    if keycode in modifiers:
-        key_state[keycode] = keystate
-
-
-def is_modifier(keycode):
-    global modifiers
-    if keycode in modifiers:
-        return True
-    return False
-
-
-def is_ignore(keycode):
-    global ignore
-    if keycode in ignore:
-        return True
-    return False
-
-
-def concat_multikeys(keycode):
-    # Handles case on my remote where multiple keys returned,
-    # ie: mute returns KEY_MIN_INTERESTING and KEY_MUTE in a list
-    ret = keycode
-    if isinstance(ret, list):
-        ret = "|".join(ret)
-    return ret
 
 
 class InputMonitor(threading.Thread):
@@ -147,50 +100,74 @@ class InputMonitor(threading.Thread):
         super(InputMonitor, self).__init__()
         self.mqttclient = mqttclient
         self.device = evdev.InputDevice(device)
+        self.topic = topic + self.device.name.replace(" ","_") + "/"
 
-        #self.topic = topic + '/state'  # state topic
-        self.topic = topic + self.device.name + '/state'
-        #self.config = topic + '/config'  # config topic for HA autodiscovery
-        #config = {
-        #        "name": MQTTCFG["name"],
-        #        "state_topic": self.topic,
-        #        "icon": "mdi:code-json"
-        #        }
-        #msg_config = json.dumps(config)
-        #self.mqttclient.publish(self.topic, msg_config)
-        #log("Sending configuration for autodiscovery to %s" % (self.config))
+        # Inizializza lo stato dei tasti
+        ak = self.device.active_keys()
+        for k in self.device.capabilities()[1]:
+            k_topic = self.topic + "KEY_" + str(k)
+            if k not in ak: 
+                self.mqttclient.publish(k_topic, "up" )
+            else:
+                self.mqttclient.publish(k_topic, "down" )
+
         log("Monitoring %s and sending to topic %s" % (device, self.topic))
 
         
 
     def run(self):
-        global key_state
+        #global key_state
 
         # Grab the input device to avoid keypresses also going to the
         # Linux console (and attempting to login)
         self.device.grab()
+        t_start = datetime.datetime.now()
 
-        for event in self.device.read_loop():
-            if event.type == evdev.ecodes.EV_KEY:
+        while(True):
+            event = self.device.read_one()
+            if event != None: 
+                if event.type == evdev.ecodes.EV_KEY:
+                    key_code = "KEY_" + str(event.code)
+                    
+                    if event.value == 0: key_value = 'up'
+                    elif event.value == 1: key_value = 'down'
+                    elif event.value == 2: key_value = 'hold'
+                    else : key_value = 'unknow'
+    
+                    self.mqttclient.publish(self.topic + key_code, key_value)
+                    # log what we publish
+                    log("Device '%s', published message %s" %
+                                (self.device.path, key_code + "=" +  key_value))
+            else:
+                t_delta = datetime.datetime.now() - t_start
+                if t_delta.total_seconds() >= 60.0:
+                    t_start = datetime.datetime.now() 
+
+                    ak = self.device.active_keys()
+                    for k in self.device.capabilities()[1]:
+                        k_topic = self.topic + "KEY_" + str(k)
+                        if k not in ak: 
+                            self.mqttclient.publish(k_topic, "up" )
+                        else:
+                            self.mqttclient.publish(k_topic, "down" )
+                        sleep(0.100)
+                        
+
+
+        # for event in self.device.read_loop():
+        #     if event.type == evdev.ecodes.EV_KEY:
                 
-                key_code = "KEY_" + str(event.code)
+        #         key_code = "KEY_" + str(event.code)
                 
-                if event.value == 0: key_value = 'up'
-                elif event.value == 1: key_value = 'down'
-                elif event.value == 2: key_value = 'hold'
-                else : key_value = 'unknow'
+        #         if event.value == 0: key_value = 'up'
+        #         elif event.value == 1: key_value = 'down'
+        #         elif event.value == 2: key_value = 'hold'
+        #         else : key_value = 'unknow'
  
-                msg = {
-                      "key_code": key_code,
-                      "key_value": key_value,
-                      "devicePath": self.device.path
-                      }  
-
-                msg_json = json.dumps(msg)
-                self.mqttclient.publish(self.topic, msg_json)
-                # log what we publish
-                log("Device '%s', published message %s" %
-                              (self.device.path, msg_json))
+        #         self.mqttclient.publish(self.topic + key_code, key_value)
+        #         # log what we publish
+        #         log("Device '%s', published message %s" %
+        #                       (self.device.path, key_code + "=" +  key_value))
 
 if __name__ == "__main__":
 
@@ -214,6 +191,9 @@ if __name__ == "__main__":
 
         MQ = MQTTClient(CLIENT, MQTTCFG)
         MQ.start()
+
+        if MQTTCFG["topic"][-1] != "/":
+            MQTTCFG["topic"] = MQTTCFG["topic"] + "/"
 
         topic = MQTTCFG["topic"]
         devices = MQTTCFG["devices"]
